@@ -203,7 +203,7 @@ static bool pfs_skiplzoblock(pfs_ctx_t * ctx) {
 	return true;
 }
 
-off_t pfs_seeklzo(pfs_ctx_t * ctx, off_t offset, int mode) {
+off_t pfs_seekfilelzo(pfs_ctx_t * ctx, off_t offset, int mode) {
 	labels(seekerr); // @suppress("Type cannot be resolved")
 
 	// Make offset referenced from start of entry

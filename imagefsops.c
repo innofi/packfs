@@ -50,7 +50,7 @@ int ifs_open(const char * path, int flags, int mode) {
 			va_end(ap);
 			return r;
 		}
-		if (xfs_ioctl_proxy(&ictx->pctx, PIOCTL_METAFINDNAME, key, &ictx->pctx.meta) != 1) {
+		if (xfs_ioctl_proxy(&ictx->pctx, PIOCTL_METAFIND, key, &ictx->pctx.meta) != 1) {
 			errnogoto(ENOENT, openerr);
 		}
 
@@ -313,6 +313,8 @@ int ifs_readdir_r(DIR * pdir, struct dirent * entry, struct dirent ** out) {
 
 	// Determine if we're within meta section
 	if (ictx->pctx.offset >= sizeof(packfs_header_t) && ictx->pctx.offset < dir->index_start) {
+		// TODO - remove this functionality
+
 		// Read next meta
 		if (!pfs_readmeta(&ictx->pctx, &ictx->pctx.meta)) {
 			return errno = EIO;

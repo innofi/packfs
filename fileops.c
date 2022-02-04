@@ -22,12 +22,6 @@ int pfs_open(const char * path, int flags, int mode) {
 	//ESP_LOGI(PACKFS_TAG, "Open pack file: path=%s, flags=0x%x, mode=0x%x", path, flags, mode);
 	// TODO - verify flags and mode
 
-	// Get path within pack file
-	/*char * subpath = strchr(path, PACKFS_PATH_SEPERATOR);
-	if (subpath != NULL) {
-		subpath += 1;
-	}*/
-
 	// Get free handle and ctx
 	int fd = -1;
 	pfs_ctx_t * ctx = NULL;
@@ -146,7 +140,7 @@ ssize_t pfs_read(int fd, void * buffer, size_t length) {
 	return xfs_read(ctx, buffer, length);
 }
 
-static off_t pfs_seekreg(pfs_ctx_t * ctx, off_t offset, int mode) {
+static off_t pfs_seekfile(pfs_ctx_t * ctx, off_t offset, int mode) {
 
 	// Make offset referenced from start of entry
 	if (mode == SEEK_CUR) {
@@ -155,19 +149,13 @@ static off_t pfs_seekreg(pfs_ctx_t * ctx, off_t offset, int mode) {
 		offset += ctx->entry.length;
 	}
 
-	// Ignore the image hash header
-	off_t extra = 0;
-	if (ctx->entry.flags & PT_IMG) {
-		extra += PACKFS_HASHSIZE;
-	}
-
 	// Make sure we're within file size
 	if (offset < 0 || offset > ctx->entry.length) {
 		errno = EOVERFLOW;
 		return -1;
 	}
 
-	uint32_t fulloffset = ctx->entry.offset + offset + extra;
+	uint32_t fulloffset = ctx->entry.offset + offset;
 	if (ctx->offset != fulloffset && !pfs_seekabs(ctx, fulloffset)) {
 		errno = EIO;
 		return -1;
@@ -236,14 +224,14 @@ off_t xfs_lseek(pfs_ctx_t * ctx, off_t offset, int mode) {
 	if (ctx->entry.flags & PF_LZO) {
 		// Compressed file
 #ifdef CONFIG_PACKFS_LZO_SUPPORT
-		return pfs_seeklzo(ctx, offset, mode);
+		return pfs_seekfilelzo(ctx, offset, mode);
 #else
 		errno = EPROTO;
 		return -1;
 #endif
 	} else {
 		// Regular file, normal seek
-		return pfs_seekreg(ctx, offset, mode);
+		return pfs_seekfile(ctx, offset, mode);
 	}
 }
 
@@ -261,13 +249,13 @@ int xfs_ioctl(pfs_ctx_t * ctx, int cmd, va_list args) {
 	//ESP_LOGI(PACKFS_TAG, "IOCtl on file: path=%s, cmd=%d", ctx->entry.path, cmd);
 
 	switch (cmd) {
-		case PIOCTL_METASIZE:
-		case PIOCTL_METAFINDINDEX:
-		case PIOCTL_METAFINDNAME:
+		case PIOCTL_METACOUNT:
+		case PIOCTL_METAREAD:
+		case PIOCTL_METAFIND:
 
-		case PIOCTL_ENTRYSIZE:
-		case PIOCTL_ENTRYFINDINDEX:
-		case PIOCTL_ENTRYFINDPATH: {
+		case PIOCTL_INDEXCOUNT:
+		case PIOCTL_INDEXREAD:
+		case PIOCTL_INDEXFIND: {
 			// Read meta size
 			packfs_header_t header;
 			if (!pfs_seekabs(ctx, 0) || !pfs_readchunk(ctx, &header, sizeof(packfs_header_t))) {
@@ -275,88 +263,106 @@ int xfs_ioctl(pfs_ctx_t * ctx, int cmd, va_list args) {
 			}
 
 			switch (cmd) {
-				case PIOCTL_METASIZE: {
+				case PIOCTL_METACOUNT: {
 					// Read args
-					int * out_size = va_arg(args, int *);
+					unsigned int * out_count = va_arg(args, unsigned int *);
 
 					// Sanity check args
-					if (out_size == NULL) {
+					if (out_count == NULL) {
 						errnogoto(EINVAL, ioctlerr);
 					}
 
-					*out_size = header.metasize / sizeof(packfs_meta_t);
+					pfs_findmeta(ctx, header.metasize, NULL, out_count);
 					ret = 0;
 					break;
 				}
-				case PIOCTL_METAFINDINDEX: {
+				case PIOCTL_METAREAD: {
 					// Read args
-					int in_index = va_arg(args, int);
+					unsigned int in_index = va_arg(args, unsigned int);
 					packfs_meta_t * out_meta = va_arg(args, packfs_meta_t *);
+					char * out_desc = va_arg(args, char *);
+					uint8_t * out_value= va_arg(args, uint8_t *);
 
 					// Sanity check args
-					if (in_index < 0 || in_index > (header.metasize / sizeof(packfs_meta_t)) || out_meta == NULL) {
+					if (out_meta == NULL) {
 						errnogoto(EINVAL, ioctlerr);
 					}
 
-					// Read in meta
-					if (!pfs_seekfwd(ctx, in_index * sizeof(packfs_meta_t)) || !pfs_readmeta(ctx, out_meta)) {
+					packfs_meta_t meta;
+					while (in_index > 0 && header.metasize > 0) {
+						// Index into meta section
+						if (!pfs_readmeta(ctx, &meta, NULL, NULL)) {
+							errnogoto(EIO, ioctlerr);
+						}
+
+						header.metasize -= sizeof(packfs_meta_t) + meta.descsize + meta.valuesize;
+						in_index -= 1;
+					}
+
+					// Check to see if we've overrun meta section
+					if (header.metasize == 0) {
+						errnogoto(EIO, ioctlerr);
+					}
+
+					// Read meta entry
+					if (!pfs_readmeta(ctx, &meta, out_desc, out_value)) {
 						errnogoto(EIO, ioctlerr);
 					}
 					ret = 0;
 					break;
 				}
-				case PIOCTL_METAFINDNAME: {
+				case PIOCTL_METAFIND: {
 					// Read args
 					const char * in_key = va_arg(args, const char *);
-					packfs_meta_t * out_meta = va_arg(args, packfs_meta_t *);
+					unsigned int * out_index = va_arg(args, unsigned int *);
 
 					// Sanity check args
-					if (in_key == NULL || strlen(in_key) > (PACKFS_MAX_METAKEY - 1) || out_meta == NULL) {
+					if (in_key == NULL || strlen(in_key) > (PACKFS_MAX_METAKEY - 1) || out_index == NULL) {
 						errnogoto(EINVAL, ioctlerr);
 					}
 
 					// Find meta by name
-					ret = pfs_findmeta(ctx, header.metasize, in_key, out_meta)? 1 : 0;
+					ret = pfs_findmeta(ctx, header.metasize, in_key, out_index)? 1 : 0;
 					break;
 				}
 
-				case PIOCTL_ENTRYSIZE: {
+				case PIOCTL_INDEXCOUNT: {
 					// Read args
-					int * out_size = va_arg(args, int *);
+					unsigned int * out_count = va_arg(args, unsigned int *);
 
 					// Sanity check args
-					if (out_size == NULL) {
+					if (out_count == NULL) {
 						errnogoto(EINVAL, ioctlerr);
 					}
 
-					*out_size = header.indexsize / sizeof(packfs_entry_t);
+					*out_count = header.indexsize / sizeof(packfs_entry_t);
 					ret = 0;
 					break;
 				}
-				case PIOCTL_ENTRYFINDINDEX: {
+				case PIOCTL_INDEXREAD: {
 					// Read args
-					int in_index = va_arg(args, int);
+					unsigned int in_index = va_arg(args, unsigned int);
 					packfs_entry_t * out_entry = va_arg(args, packfs_entry_t *);
 
 					// Sanity check args
-					if (in_index < 0 || in_index > (header.indexsize / sizeof(packfs_entry_t)) || out_entry == NULL) {
+					if (in_index > (header.indexsize / sizeof(packfs_entry_t)) || out_entry == NULL) {
 						errnogoto(EINVAL, ioctlerr);
 					}
 
 					// Read in meta
-					if (!pfs_seekfwd(ctx, header.metasize + in_index * sizeof(packfs_entry_t)) || !pfs_readentry(ctx, out_entry)) {
+					if (!pfs_seekfwd(ctx, header.metasize + in_index * sizeof(packfs_entry_t)) || !pfs_readindex(ctx, out_entry)) {
 						errnogoto(EIO, ioctlerr);
 					}
 					ret = 0;
 					break;
 				}
-				case PIOCTL_ENTRYFINDPATH: {
+				case PIOCTL_INDEXFIND: {
 					// Read args
 					const char * in_path = va_arg(args, const char *);
 					packfs_entry_t * out_entry = va_arg(args, packfs_entry_t *);
 
 					// Sanity check args
-					if (in_path == NULL || strlen(in_path) > (PACKFS_MAX_ENTRYPATH - 1) || out_entry == NULL) {
+					if (in_path == NULL || strlen(in_path) > (PACKFS_MAX_INDEXPATH - 1) || out_entry == NULL) {
 						errnogoto(EINVAL, ioctlerr);
 					}
 
@@ -388,29 +394,7 @@ int xfs_ioctl(pfs_ctx_t * ctx, int cmd, va_list args) {
 			ret = 0;
 			break;
 		}
-		case PIOCTL_CURRENTIMGHASH: {
-			// Read args
-			char * out_hash = va_arg(args, char *);
 
-			// Sanity check args
-			if (out_hash == NULL) {
-				errnogoto(EINVAL, ioctlerr);
-			}
-
-			// Only available on img entry types
-			if (!(ctx->entry.flags & PT_IMG)) {
-				ret = 0;
-				break;
-			}
-
-			// Read out hash
-			if (!pfs_seekentry(ctx, &ctx->entry) || !pfs_readimghash(ctx, (uint8_t *)out_hash)) {
-				errnogoto(EIO, ioctlerr);
-			}
-
-			ret = 1;
-			break;
-		}
 		default: {
 			errnogoto(EINVAL, ioctlerr);
 		}

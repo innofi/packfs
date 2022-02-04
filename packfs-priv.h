@@ -7,6 +7,7 @@
 #include <dirent.h>
 
 #include <mbedtls/sha256.h>
+#include <rom/crc.h>
 
 #include <packfs.h>
 
@@ -24,7 +25,6 @@
 #define unlikely(x)     	(__builtin_expect(!!(x), 0))
 #define labels(...)			__label__ __VA_ARGS__
 #define min(a, b)			({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
-#define crc16(...)			crc16_be(__VA_ARGS__)
 #define errnogoto(e, l)		({ errno = e; goto l; })
 #define errgoto(e, l)		({ err = e; goto l; })
 
@@ -143,7 +143,7 @@ bool pfs_preplzo(pfs_ctx_t * ctx);
 bool pfs_readlzoheader(pfs_ctx_t * ctx);
 bool pfs_decompresslzoblock(pfs_ctx_t * ctx);
 ssize_t pfs_readlzo(pfs_ctx_t * ctx, void * buffer, size_t length);
-off_t pfs_seeklzo(pfs_ctx_t * ctx, off_t offset, int mode);
+off_t pfs_seekfilelzo(pfs_ctx_t * ctx, off_t offset, int mode);
 bool pfs_initlzo(void);
 #endif
 
@@ -153,14 +153,14 @@ bool pfs_seekfwd(pfs_ctx_t * ctx, uint32_t length);
 bool pfs_seekentry(pfs_ctx_t * ctx, packfs_entry_t * entry);
 
 // Find ops
-bool pfs_findmeta(pfs_ctx_t * ctx, uint32_t metasize, const char * key, packfs_meta_t * out_meta);
+bool pfs_findmeta(pfs_ctx_t * ctx, uint32_t metasize, const char * key, unsigned int * out_index);
 bool pfs_findentry(pfs_ctx_t * ctx, uint32_t indexsize, const char * path, packfs_entry_t * out_entry);
 
 // Read ops
 bool pfs_readchunk(pfs_ctx_t * ctx, void * buffer, size_t length);
-bool pfs_readmeta(pfs_ctx_t * ctx, packfs_meta_t * meta);
-bool pfs_readentry(pfs_ctx_t * ctx, packfs_entry_t * entry);
-bool pfs_readimghash(pfs_ctx_t * ctx, uint8_t * hash);
+bool pfs_readmeta(pfs_ctx_t * ctx, packfs_meta_t * meta, char * desc, uint8_t * value);
+bool pfs_readindex(pfs_ctx_t * ctx, packfs_entry_t * entry);
+//bool pfs_readimghash(pfs_ctx_t * ctx, uint8_t * hash);
 
 // Write ops
 ssize_t pfs_write(int fd, const void * data, size_t size);

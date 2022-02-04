@@ -54,22 +54,17 @@ bool pfs_checkheader(packfs_header_t * header) {
 		return false;
 	}
 
-	// Check for proper size
-	if (header->indexsize > (sizeof(packfs_entry_t) * PACKFS_MAX_NUMENTRIES)) {
-		//ESP_LOGW(PACKFS_TAG, "Number of entries exceeds limit: limit=%d", PACKFS_MAX_NUMENTRIES);
+	// Sanity check index size
+	if ((header->indexsize % sizeof(packfs_entry_t)) != 0) {
+		//ESP_LOGW(PACKFS_TAG, "Bad section sizes on pack file");
 		return false;
 	}
 
 	// Check CRC
-	uint16_t calccrc = crc16(0, (void *)header, sizeof(packfs_header_t) - sizeof(uint16_t));
+	uint32_t calccrc = crc32_le(0, (void *)header, sizeof(packfs_header_t) - sizeof(uint32_t) - sizeof(packfs_hmac_t));
 	if (calccrc != header->headercrc) {
-		//ESP_LOGW(PACKFS_TAG, "Bad header crc on pack file: reported=0x%x, calc=0x%x", header->headercrc, calccrc);
-		return false;
-	}
-
-	// Sanity check meta and index sizes
-	if ((header->metasize % sizeof(packfs_meta_t)) != 0 || (header->indexsize % sizeof(packfs_entry_t)) != 0) {
-		//ESP_LOGW(PACKFS_TAG, "Bad section sizes on pack file");
+		// TODO - remove this warning
+		ESP_LOGW(PACKFS_TAG, "Bad header crc on pack file: reported=0x%x, calc=0x%x", header->headercrc, calccrc);
 		return false;
 	}
 
@@ -103,28 +98,43 @@ bool pfs_seekentry(pfs_ctx_t * ctx, packfs_entry_t * entry) {
 	return pfs_seekabs(ctx, entry->offset);
 }
 
-bool pfs_readmeta(pfs_ctx_t * ctx, packfs_meta_t * meta) {
-	return pfs_readchunk(ctx, meta, sizeof(packfs_meta_t));
+bool pfs_readmeta(pfs_ctx_t * ctx, packfs_meta_t * meta, char * desc, uint8_t * value) {
+	if (!pfs_readchunk(ctx, meta, sizeof(packfs_meta_t))) {
+		return false;
+	}
+
+	// Read the description
+	if (desc != NULL && !pfs_readchunk(ctx, desc, meta->descsize))		return false;
+	else if (desc == NULL && !pfs_seekfwd(ctx, meta->descsize))			return false;
+
+	// Read the value
+	if (value != NULL && !pfs_readchunk(ctx, value, meta->valuesize))	return false;
+	else if (value == NULL && !pfs_seekfwd(ctx, meta->valuesize))		return false;
+
+	return true;
 }
 
-bool pfs_readentry(pfs_ctx_t * ctx, packfs_entry_t * entry) {
+bool pfs_readindex(pfs_ctx_t * ctx, packfs_entry_t * entry) {
 	return pfs_readchunk(ctx, entry, sizeof(packfs_entry_t));
 }
 
-bool pfs_readimghash(pfs_ctx_t * ctx, uint8_t * hash) {
-	return pfs_readchunk(ctx, hash, PACKFS_HASHSIZE);
-}
+bool pfs_findmeta(pfs_ctx_t * ctx, uint32_t metasize, const char * key, unsigned int * out_index) {
+	packfs_meta_t meta;
 
-bool pfs_findmeta(pfs_ctx_t * ctx, uint32_t metasize, const char * key, packfs_meta_t * out_meta) {
-	size_t metas = metasize / sizeof(packfs_meta_t);
-	while (metas-- > 0) {
-		if (!pfs_readmeta(ctx, out_meta)) {
+	*out_index = 0;
+	while (metasize > 0) {
+		// Read the meta chunk
+		if (!pfs_readmeta(ctx, &meta, NULL, NULL)) {
 			return false;
 		}
 
-		if (strcmp(key, out_meta->key) == 0) {
+		// Check the key
+		if (key != NULL && strcmp(key, meta.key) == 0) {
 			return true;
 		}
+
+		metasize -= sizeof(packfs_meta_t) + meta.descsize + meta.valuesize;
+		*out_index += 1;
 	}
 
 	return false;
@@ -133,7 +143,7 @@ bool pfs_findmeta(pfs_ctx_t * ctx, uint32_t metasize, const char * key, packfs_m
 bool pfs_findentry(pfs_ctx_t * ctx, uint32_t indexsize, const char * path, packfs_entry_t * out_entry) {
 	uint16_t entries = indexsize / sizeof(packfs_entry_t);
 	while (entries-- > 0) {
-		if (!pfs_readentry(ctx, out_entry)) {
+		if (!pfs_readindex(ctx, out_entry)) {
 			return false;
 		}
 
@@ -145,16 +155,7 @@ bool pfs_findentry(pfs_ctx_t * ctx, uint32_t indexsize, const char * path, packf
 	return false;
 }
 
-static inline bool pfs_prepimg(pfs_ctx_t * ctx) {
-	return pfs_seekfwd(ctx, PACKFS_HASHSIZE);
-}
-
 bool pfs_prepentry(pfs_ctx_t * ctx) {
-	// Read sha256 if image type
-	if ((ctx->entry.flags & PT_IMG) && !pfs_prepimg(ctx)) {
-		return false;
-	}
-
 #ifdef CONFIG_PACKFS_LZO_SUPPORT
 	if ((ctx->entry.flags & PF_LZO) && (!pfs_preplzo(ctx) || !pfs_readlzoheader(ctx))) {
 		return false;

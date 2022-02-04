@@ -76,15 +76,15 @@ packfs_status_t pfsp_process(pfs_proc_t * proc) {
 #define errorreturn(err)		({ callback(onerror, __FILE__, __LINE__, proc->section, (err)); pfsp_close(proc); return PS_FAIL; })
 
 #define wantskip(filesize)		(\
-									((ctx->entry.flags & PT_REG) && proc->cbs.onentrystart == NULL && proc->cbs.onentrydata == NULL && proc->cbs.onregentryend == NULL) || \
-									((ctx->entry.flags & PT_IMG) && proc->cbs.onentrystart == NULL && proc->cbs.onentrydata == NULL && proc->cbs.onimgentryend == NULL) || \
+									((ctx->entry.flags & PFT_REG) && proc->cbs.onentrystart == NULL && proc->cbs.onentrydata == NULL && proc->cbs.onregentryend == NULL) || \
+									((ctx->entry.flags & PFT_IMG) && proc->cbs.onentrystart == NULL && proc->cbs.onentrydata == NULL && proc->cbs.onimgentryend == NULL) || \
 									(proc->cbs.onentrystart != NULL && !proc->cbs.onentrystart(proc->userdata, &ctx->entry, filesize)) \
 								)
 
 #define addhash(enable)			({ if ((enable) && mbedtls_sha256_update_ret(proc->shactx, readbuffer, bytes) != 0) errorreturn(EBADMSG); })
 #define wanthash_head()			(proc->shactx != NULL && proc->cbs.onbodyhash != NULL)
 #define wanthash_body()			(proc->shactx != NULL && proc->section == PS_REGENTRY && proc->cbs.onbodyhash != NULL)
-#define wanthash_img()			(proc->shactx != NULL && proc->section == PS_IMGENTRY && (ctx->entry.flags & PT_IMG) && proc->cbs.onimgentryend != NULL)
+#define wanthash_img()			(proc->shactx != NULL && proc->section == PS_IMGENTRY && (ctx->entry.flags & PFT_IMG) && proc->cbs.onimgentryend != NULL)
 
 	packfs_status_t status = PS_OK;
 	pfs_ctx_t * ctx = &proc->ctx;
@@ -285,7 +285,7 @@ packfs_status_t pfsp_process(pfs_proc_t * proc) {
 				}
 
 				// Advance state
-				if (ctx->entry.flags & PT_IMG) {
+				if (ctx->entry.flags & PFT_IMG) {
 					proc->state = PS_READIMGHASH;
 				} else{
 					proc->state = (ctx->entry.flags & PF_LZO)? PS_READLZOHEADER : PS_READREGCHUNK;
@@ -317,10 +317,10 @@ packfs_status_t pfsp_process(pfs_proc_t * proc) {
 				addhash(wanthash_body() || wanthash_img());
 
 				// Determine if this is the first read of section
-				uint32_t start = ctx->entry.offset + ((ctx->entry.flags & PT_IMG)? PACKFS_HASHSIZE : 0);
+				uint32_t start = ctx->entry.offset + ((ctx->entry.flags & PFT_IMG)? PACKFS_HASHSIZE : 0);
 
 				// See if user wants to skip this section
-				if ((ctx->offset - bytes) == start && wantskip(ctx->entry.length - ((ctx->entry.flags & PT_IMG)? PACKFS_HASHSIZE : 0))) {
+				if ((ctx->offset - bytes) == start && wantskip(ctx->entry.length - ((ctx->entry.flags & PFT_IMG)? PACKFS_HASHSIZE : 0))) {
 					proc->state = PS_SKIPENTRY;
 					break;
 				}
@@ -329,7 +329,7 @@ packfs_status_t pfsp_process(pfs_proc_t * proc) {
 
 				// Handle end-of-entry
 				if (ctx->offset == (ctx->entry.offset + ctx->entry.length)) {
-					if (proc->section == PS_IMGENTRY && (ctx->entry.flags & PT_IMG)) {
+					if (proc->section == PS_IMGENTRY && (ctx->entry.flags & PFT_IMG)) {
 						uint8_t * calchash = NULL;
 
 						// Calculate the hash of the image
@@ -426,7 +426,7 @@ packfs_status_t pfsp_process(pfs_proc_t * proc) {
 
 					// Determine if we're at end of file
 					if ((offset + ctx->lzo.block.uncompressed_length) == ctx->lzo.header.uncompressed_length) {
-						if (proc->section == PS_IMGENTRY && (ctx->entry.flags & PT_IMG)) {
+						if (proc->section == PS_IMGENTRY && (ctx->entry.flags & PFT_IMG)) {
 							uint8_t * calchash = NULL;
 
 							// Calculate the hash of the image

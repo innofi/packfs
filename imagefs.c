@@ -102,9 +102,9 @@ static bool ifs_verify_onbodyhash(void * ud, uint8_t * reported_hash, uint8_t * 
 
 static bool ifs_verify_onentrystart(void * ud, const packfs_entry_t * entry, uint32_t filesize) {
 #ifdef CONFIG_PACKFS_IMAGEFS_VERBOSEINIT
-	ESP_LOGI(IMAGEFS_TAG, "Found %s file in image pack: %s %s size=%u", (entry->flags & PT_REG)? "regular" : (entry->flags & PT_IMG)? "image" : "UNKNOWN", entry->path, (entry->flags & PF_LZO)? "compressed" : "uncompressed", filesize);
+	ESP_LOGI(IMAGEFS_TAG, "Found %s file in image pack: %s %s size=%u", (entry->flags & PFT_REG)? "regular" : (entry->flags & PFT_IMG)? "image" : "UNKNOWN", entry->path, (entry->flags & PF_LZO)? "compressed" : "uncompressed", filesize);
 #endif
-	return entry->flags & PT_IMG;
+	return entry->flags & PFT_IMG;
 }
 
 static bool ifs_verify_onimgentryend(void * ud, const packfs_entry_t * entry, uint8_t * reported_hash, uint8_t * calculated_hash, bool hash_matches) {

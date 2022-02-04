@@ -75,7 +75,7 @@ int xfs_fstat(pfs_ctx_t * ctx, struct stat * st) {
 #endif
 		} else {
 			// Regular file
-			st->st_size = ctx->entry.length - (ctx->entry.flags & PT_IMG)? PACKFS_HASHSIZE : 0;
+			st->st_size = ctx->entry.length;
 			st->st_blksize = 1;
 			st->st_blocks = st->st_size;
 		}

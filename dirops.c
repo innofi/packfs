@@ -192,7 +192,7 @@ int xfs_readdir_r(pfs_ctx_t * ctx, pfs_dirent_t * dir, struct dirent * entry, st
 	}
 
 	// Read next entry index
-	if (!pfs_readentry(ctx, &ctx->entry)) {
+	if (!pfs_readindex(ctx, &ctx->entry)) {
 		return errno = EIO;
 	}
 

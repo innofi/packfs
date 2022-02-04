@@ -2,23 +2,28 @@
 #define __PACKFS_H_
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <esp_err.h>
 
 #define CONFIG_PACKFS_LZO_SUPPORT
-#define CONFIG_PACKFS_PROCESS_SUPPORT
-#define CONFIG_PACKFS_STREAM_SUPPORT
+//#define CONFIG_PACKFS_PROCESS_SUPPORT
+//#define CONFIG_PACKFS_STREAM_SUPPORT
 
 #define PACKFS_PATH_SEPERATOR	'#'
 #define PACKFS_MAX_FULLPATH		(96)
-#define PACKFS_MAX_METAKEY		(32)
-#define PACKFS_MAX_METAVALUE	(64)
-#define PACKFS_MAX_ENTRYPATH	(64)
-#define PACKFS_MAX_NUMENTRIES	(30)
+#define PACKFS_MAX_METAKEY		(64)
+//#define PACKFS_MAX_METAVALUE	(64)
+#define PACKFS_MAX_INDEXPATH	(128)
+//#define PACKFS_MAX_NUMENTRIES	(30)
 
 #define PACKFS_MAX_LZOBLOCK		(2048)
 #define PACKFS_MIN_STREAMSIZE	(128) /* minimum size = max(sizeof(packfs_entry_t), sizeof(packfs_meta_t)) */
-#define PACKFS_HASHSIZE			(32)
+// TODO - figure out min streamsize with updated meta_t
+//#define PACKFS_HASHSIZE			(32)
+
+typedef uint8_t packfs_sha256_t[32];
+typedef packfs_sha256_t packfs_hmac_t;
 
 
 #define __packfs_packed __attribute__((packed))
@@ -26,28 +31,53 @@
 typedef struct __packfs_packed {
 	uint16_t magic;
 	uint8_t version;
-	uint16_t metasize;
-	uint16_t indexsize;
-	uint32_t regentrysize;
-	uint32_t imgentrysize;
-	uint8_t packhash[PACKFS_HASHSIZE];
-	uint16_t headercrc;
+	uint8_t _reserved;
+	uint32_t metasize;
+	uint32_t indexsize;
+	packfs_sha256_t metahash;
+	packfs_sha256_t indexhash;
+	uint32_t headercrc;
+	packfs_hmac_t securehmac;
 } packfs_header_t;
 
+#define PF_SECURED  (0x1000)
+#define PF_CHANGED  (0x0001)
+#define PF_NVM      (0x0010)
+#define PF_NVM_ONLYIFCHANGED (0x0020)
+
+typedef enum __packfs_packed {
+    PT_UNK		= (0x00),
+    PT_BOOL     = (0x01),
+	PT_UINT8    = (0x10),
+	PT_INT8		= (0x11),
+	PT_UINT16	= (0x20),
+	PT_INT16	= (0x21),
+	PT_UINT32   = (0x30),
+	PT_INT32    = (0x31),
+	PT_UINT64   = (0x40),
+	PT_INT64    = (0x41),
+	PT_DOUBLE   = (0x50),
+	PT_STRING   = (0x60),
+	PT_BLOB     = (0x70),
+	PT_FILE		= (0x71)
+} packfs_metatype_t;
 typedef struct __packfs_packed {
-	uint8_t flags;
+	uint16_t flags;
+	packfs_metatype_t type;
+	uint16_t descsize;
+	uint32_t valuesize;
 	char key[PACKFS_MAX_METAKEY];
-	char value[PACKFS_MAX_METAVALUE];
 } packfs_meta_t;
 
-#define PT_REG		(0x01)
-#define PT_IMG		(0x02)
-#define PF_LZO		(0x10)
+#define PFT_REG     (0x01)
+#define PFT_IMG     (0x02)
+#define PF_LZO      (0x10)
 typedef struct __packfs_packed {
+	uint8_t flags;
 	uint32_t offset;
 	uint32_t length;
-	uint8_t flags;
-	char path[PACKFS_MAX_ENTRYPATH];
+	packfs_sha256_t entryhash;
+	char path[PACKFS_MAX_INDEXPATH];
 } packfs_entry_t;
 
 #ifdef CONFIG_PACKFS_PROCESS_SUPPORT
@@ -71,12 +101,12 @@ typedef enum {
 typedef struct {
 	void (*onerror)(void * ud, const char * file, unsigned int line, packfs_proc_section_t section, int err);
 	void (*onheader)(void * ud, const packfs_header_t * header);
-	void (*onmeta)(void * ud, const packfs_meta_t * meta);
-	bool (*onbodyhash)(void * ud, uint8_t * reported_hash, uint8_t * calculated_hash, bool hash_matches);
-	bool (*onentrystart)(void * ud, const packfs_entry_t * entry, uint32_t filesize);
-	void (*onentrydata)(void * ud, const packfs_entry_t * entry, void * data, uint32_t length, uint32_t offset);
-	bool (*onregentryend)(void * ud, const packfs_entry_t * entry);
-	bool (*onimgentryend)(void * ud, const packfs_entry_t * entry, uint8_t * reported_hash, uint8_t * calculated_hash, bool hash_matches);
+	void (*onmeta)(void * ud, const packfs_meta_t * meta, const char * description, const uint8_t * value);
+	bool (*onindex)(void * ud, const packfs_entry_t * entry);
+	bool (*onpackhash)(void * ud, const packfs_header_t * header, packfs_sha256_t calcd_headerhash, packfs_sha256_t calcd_metahash, packfs_sha256_t calcd_indexhash);
+	bool (*onpackhmac)(void * ud, const packfs_header_t * header, packfs_hmac_t calcd_securehmac);
+	bool (*onentrystart)(void * ud, const packfs_entry_t * entry);
+	bool (*onentryend)(void * ud, const packfs_entry_t * entry, packfs_sha256_t calcd_entryhash);
 	bool (*oneof)(void * ud);
 } packfs_proccb_t;
 
@@ -93,16 +123,15 @@ typedef struct {
 	size_t max_files;
 } packfs_conf_t;
 
-#define PIOCTL_METASIZE			(1)
-#define PIOCTL_METAFINDINDEX	(2)
-#define PIOCTL_METAFINDNAME		(3)
+#define PIOCTL_METACOUNT		(1)
+#define PIOCTL_METAREAD			(2)
+#define PIOCTL_METAFIND			(3)
 
-#define PIOCTL_ENTRYSIZE		(4)
-#define PIOCTL_ENTRYFINDINDEX	(5)
-#define PIOCTL_ENTRYFINDPATH	(6)
+#define PIOCTL_INDEXCOUNT		(4)
+#define PIOCTL_INDEXREAD		(5)
+#define PIOCTL_INDEXFIND	(6)
 
 #define PIOCTL_CURRENTENTRY		(7)
-#define PIOCTL_CURRENTIMGHASH	(8)
 
 esp_err_t packfs_vfs_register(packfs_conf_t * config);
 

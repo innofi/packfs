@@ -19,7 +19,7 @@ typedef struct {
 	int eerrno;
 	esp_err_t err;
 	bool foundimg;
-	char path[PACKFS_MAX_ENTRYPATH];
+	char path[PACKFS_MAX_INDEXPATH];
 	const esp_partition_t * partition;
 	esp_ota_handle_t handle;
 } ifs_dfu_t;
@@ -122,7 +122,7 @@ static bool ifs_dfu_onentrystart(void * ud, const packfs_entry_t * entry, uint32
 	ifs_dfu_t * dfu = (ifs_dfu_t *)ud;
 
 	// Determine if we should start dfu
-	bool start = !dfu->foundimg && (entry->flags & PT_IMG) && strcmp(entry->path, dfu->path) == 0;
+	bool start = !dfu->foundimg && (entry->flags & PFT_IMG) && strcmp(entry->path, dfu->path) == 0;
 	if (!start) return false;
 
 	// Mark image as found
@@ -175,7 +175,7 @@ esp_err_t imagefs_file_dfu(const char * file_path, const char * firmware_image_s
 	if unlikely(file_path == NULL || firmware_image_subpath == NULL) {
 		return ESP_ERR_INVALID_ARG;
 	}
-	if (strlen(firmware_image_subpath) > (PACKFS_MAX_ENTRYPATH - 1)) {
+	if (strlen(firmware_image_subpath) > (PACKFS_MAX_INDEXPATH - 1)) {
 		return ESP_ERR_INVALID_SIZE;
 	}
 
@@ -284,7 +284,7 @@ esp_err_t imagefs_stream_dfu(const char * firmware_image_subpath, bool strip_ima
 	if unlikely(firmware_image_subpath == NULL || out_stream == NULL) {
 		return ESP_ERR_INVALID_ARG;
 	}
-	if (strlen(firmware_image_subpath) > (PACKFS_MAX_ENTRYPATH - 1)) {
+	if (strlen(firmware_image_subpath) > (PACKFS_MAX_INDEXPATH - 1)) {
 		return ESP_ERR_INVALID_SIZE;
 	}
 

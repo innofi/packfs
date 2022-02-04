@@ -8,7 +8,7 @@
 
 #include <packfs.h>
 
-#define CONFIG_PACKFS_IMAGEFS_SUPPORT
+//#define CONFIG_PACKFS_IMAGEFS_SUPPORT
 #define CONFIG_PACKFS_IMAGEFS_VERBOSEINIT
 
 #define IMAGEFS_PATH_META				"/meta/"
