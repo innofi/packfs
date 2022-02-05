@@ -8,7 +8,7 @@
 #include "imagefs-priv.h"
 
 
-#if !defined(CONFIG_PACKFS_IMAGEFS_SUPPORT)
+#if !defined(CONFIG_IMAGEFS_SUPPORT)
 #error "This file should NOT be included if CONFIG_PACKFS_IMAGEFS_SUPPORT is not set."
 #elif !defined(CONFIG_PACKFS_PROCESS_SUPPORT) || !defined(CONFIG_PACKFS_STREAM_SUPPORT)
 #error "Necessary dependencies not enabled. Needs CONFIG_PACKFS_PROCESS_SUPPORT and CONFIG_PACKFS_PROCESS_FROMFILE_SUPPORT."
@@ -18,7 +18,6 @@ extern const char * pprefix_path;
 
 static _lock_t ictxlock;
 static ifs_ctx_t * ictx = NULL;
-static size_t maxictx;
 
 imagefs_filename_t ifilename = {NULL, NULL, NULL};
 char imagefs_path[PACKFS_MAX_FULLPATH] = {0};
@@ -31,7 +30,7 @@ int ifs_newctx(void) {
 
 	_lock_acquire(&ictxlock);
 	{
-		for (int i=0; i<maxictx; i++) {
+		for (int i=0; i<CONFIG_PACKFS_MAX_FILES; i++) {
 			if (!ictx[i].pctx.inuse) {
 				fd = i;
 				memset(&ictx[i], 0, sizeof(ifs_ctx_t));
@@ -45,7 +44,7 @@ int ifs_newctx(void) {
 }
 
 ifs_ctx_t * ifs_getctx(int fd) {
-	return (fd < 0 || fd >= maxictx)? NULL : &ictx[fd];
+	return (fd < 0 || fd >= CONFIG_PACKFS_MAX_FILES)? NULL : &ictx[fd];
 }
 
 bool ifs_checkinit() {
@@ -150,16 +149,15 @@ esp_err_t imagefs_vfs_register(imagefs_conf_t * config) {
 	esp_err_t err = ESP_OK;
 
 	// Sanity check args
-	if unlikely(config == NULL || config->max_files == 0 || config->base_path == NULL) {
+	if unlikely(config == NULL || config->base_path == NULL) {
 		return ESP_ERR_INVALID_ARG;
 	}
 
-	if ((ictx = calloc(config->max_files, sizeof(ifs_ctx_t))) == NULL) {
+	if ((ictx = calloc(CONFIG_PACKFS_MAX_FILES, sizeof(ifs_ctx_t))) == NULL) {
 		return ESP_ERR_NO_MEM;
 	}
 
 	_lock_init(&ictxlock);
-	maxictx = config->max_files;
 	imagefs_mount = strdup(config->base_path);
 
 	// Check strdup success

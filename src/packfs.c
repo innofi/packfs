@@ -11,7 +11,6 @@
 
 static _lock_t pctxlock;
 static pfs_ctx_t * pctx = NULL;
-static size_t maxpctx = 0;
 
 const char * packfs_mount = NULL;
 const char * pprefix_path = NULL;
@@ -21,7 +20,7 @@ int pfs_newctx(void) {
 
 	_lock_acquire(&pctxlock);
 	{
-		for (int i=0; i<maxpctx; i++) {
+		for (int i=0; i<CONFIG_PACKFS_MAX_FILES; i++) {
 			if (!pctx[i].inuse) {
 				fd = i;
 				memset(&pctx[i], 0, sizeof(pfs_ctx_t));
@@ -35,7 +34,7 @@ int pfs_newctx(void) {
 }
 
 pfs_ctx_t * pfs_getctx(int fd) {
-	if unlikely(fd < 0 || fd >= maxpctx) {
+	if unlikely(fd < 0 || fd >= CONFIG_PACKFS_MAX_FILES) {
 		return NULL;
 	}
 
@@ -282,7 +281,7 @@ esp_err_t packfs_vfs_register(packfs_conf_t * config) {
 	}
 
 	// Sanity check args
-	if unlikely(config == NULL || config->max_files == 0 || config->base_path == NULL || config->prefix_path == NULL) {
+	if unlikely(config == NULL || config->base_path == NULL || config->prefix_path == NULL) {
 		return ESP_ERR_INVALID_ARG;
 	}
 
@@ -293,12 +292,11 @@ esp_err_t packfs_vfs_register(packfs_conf_t * config) {
 	}
 #endif
 
-	if ((pctx = calloc(config->max_files, sizeof(pfs_ctx_t))) == NULL) {
+	if ((pctx = calloc(CONFIG_PACKFS_MAX_FILES, sizeof(pfs_ctx_t))) == NULL) {
 		return ESP_ERR_NO_MEM;
 	}
 
 	_lock_init(&pctxlock);
-	maxpctx = config->max_files;
 	packfs_mount = strdup(config->base_path);
 	pprefix_path = strdup(config->prefix_path);
 

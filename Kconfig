@@ -1,0 +1,48 @@
+menu "PackFS"
+    config PACKFS_MAX_FILES
+        int "Max open files"
+        default 5
+        range 1 64
+        help
+            Blah
+
+    config PACKFS_LZO_SUPPORT
+        bool "Include LZO decompression routines"
+        default y
+        help
+            When this option is enabled, files compressed with lzo can be read
+
+    config PACKFS_PROCESS_SUPPORT
+        bool "Support sequential processing of pack files"
+        default y
+        help
+            Blah
+
+    config PACKFS_STREAM_SUPPORT
+        bool "Enable stream processing for pack files"
+        default y
+        depends on PACKFS_PROCESS_SUPPORT
+        help
+            Blah
+
+    config IMAGEFS_SUPPORT
+        bool "Enable ImageFS"
+        default y
+        help
+            Blah
+
+    config IMAGEFS_VERBOSE_INIT
+        bool "Log verbose messages on current ImageFS file during initialization"
+        default y
+        depends on IMAGEFS_SUPPORT
+        help
+            Blah
+
+    config IMAGEFS_DFU_SUPPORT
+        bool "Support DFU"
+        default y
+        depends on IMAGEFS_SUPPORT && PACKFS_STREAM_SUPPORT
+        help
+            Blah
+
+endmenu

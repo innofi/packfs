@@ -379,7 +379,7 @@ int xfs_ioctl(pfs_ctx_t * ctx, int cmd, va_list args) {
 			break;
 		}
 
-		case PIOCTL_CURRENTENTRY: {
+		case PIOCTL_ENTRYCURRENT: {
 			// Read args
 			packfs_entry_t * out_entry = va_arg(args, packfs_entry_t *);
 

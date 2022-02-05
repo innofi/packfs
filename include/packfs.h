@@ -6,7 +6,6 @@
 #include <stdint.h>
 #include <esp_err.h>
 
-#define CONFIG_PACKFS_LZO_SUPPORT
 //#define CONFIG_PACKFS_PROCESS_SUPPORT
 //#define CONFIG_PACKFS_STREAM_SUPPORT
 
@@ -120,7 +119,6 @@ typedef void * packfs_stream_t;
 typedef struct {
 	const char * base_path;
 	const char * prefix_path;
-	size_t max_files;
 } packfs_conf_t;
 
 #define PIOCTL_METACOUNT		(1)
@@ -129,9 +127,10 @@ typedef struct {
 
 #define PIOCTL_INDEXCOUNT		(4)
 #define PIOCTL_INDEXREAD		(5)
-#define PIOCTL_INDEXFIND	(6)
+#define PIOCTL_INDEXFIND		(6)
 
-#define PIOCTL_CURRENTENTRY		(7)
+#define PIOCTL_ENTRYCURRENT		(7)
+#define PIOCTL_ENTRYHASH		(8)
 
 esp_err_t packfs_vfs_register(packfs_conf_t * config);
 

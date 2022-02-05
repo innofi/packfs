@@ -8,8 +8,6 @@
 
 #include <packfs.h>
 
-//#define CONFIG_PACKFS_IMAGEFS_SUPPORT
-#define CONFIG_PACKFS_IMAGEFS_VERBOSEINIT
 
 #define IMAGEFS_PATH_META				"/meta/"
 #define IMAGEFS_DFU_STREAM_BUFSIZE		(128) /* minimum size = PACKFS_MIN_STREAMSIZE */
@@ -27,7 +25,7 @@ typedef struct {
 typedef struct {
 	const char * base_path;
 	const char * prefix_path;
-	size_t max_files;
+//	size_t max_files;
 	bool skip_verify;
 	bool full_verify;
 	imagefs_filename_t filename;

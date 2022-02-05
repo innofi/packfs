@@ -11,7 +11,7 @@
 #include "imagefs-priv.h"
 
 
-#ifndef CONFIG_PACKFS_IMAGEFS_SUPPORT
+#ifndef CONFIG_IMAGEFS_SUPPORT
 #error "This file should NOT be included if CONFIG_PACKFS_IMAGEFS_SUPPORT is not set."
 #else
 
